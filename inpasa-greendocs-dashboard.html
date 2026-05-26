@@ -173,9 +173,13 @@ body{font-family:'Montserrat','Segoe UI','Helvetica Neue',Arial,sans-serif;backg
     <span id="hdr-sub">Faça o upload do arquivo CSV para iniciar</span>
   </div>
   <div class="hdr-btns">
-    <label class="btn btn-ol" style="cursor:pointer">
+    <button class="btn btn-ol" onclick="loadFromSheets()" id="btn-refresh">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+      Atualizar dados
+    </button>
+    <label class="btn btn-ol" style="cursor:pointer" title="Upload manual de arquivo">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
-      Atualizar CSV
+      Upload CSV
       <input type="file" accept=".csv,.xlsx,.xls" id="hdr-inp">
     </label>
     <button class="btn btn-or" onclick="exportPDF()">
@@ -185,13 +189,21 @@ body{font-family:'Montserrat','Segoe UI','Helvetica Neue',Arial,sans-serif;backg
   </div>
 </div>
 
-<div class="upload-wrap" id="upload-wrap">
+<div class="upload-wrap" id="upload-wrap" style="display:none">
   <div class="upload-zone" id="upload-zone">
     <input type="file" accept=".csv,.xlsx,.xls" id="csv-inp">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
     <h3>Upload da planilha GreenDocs</h3>
     <p>Arraste o arquivo CSV aqui ou clique para selecionar<br>
-    <span style="font-size:21px;color:#BDBFC1">Aceita .xlsx ou .csv (separador ; ou ,) · colunas: ambiente, status, aging, especialidade, area, responsaveis, critico…</span></p>
+    <span style="font-size:13px;color:#BDBFC1">Aceita .xlsx ou .csv (separador ; ou ,) · colunas: ambiente, status, aging, especialidade, area, responsaveis, critico…</span></p>
+  </div>
+</div>
+<div id="loading-screen" style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:20px;font-family:Montserrat,sans-serif">
+  <svg width="52" height="52" viewBox="0 0 36 36" fill="none"><rect x="2" y="9" width="20" height="23" rx="3" fill="#BDBFC1"/><rect x="7" y="4" width="20" height="23" rx="3" fill="#304F7E" opacity=".9"/><path d="M20 4 L27 4 L27 11 Z" fill="#EAA239"/></svg>
+  <div style="font-size:20px;font-weight:700;color:#304F7E">Carregando dados do GreenDocs...</div>
+  <div style="font-size:15px;color:#5A5E6B" id="loading-msg">Conectando ao Google Sheets</div>
+  <div style="width:200px;height:5px;background:#EEF2F8;border-radius:99px;overflow:hidden">
+    <div id="loading-bar" style="height:100%;width:0%;background:#304F7E;border-radius:99px;transition:width .4s ease"></div>
   </div>
 </div>
 
@@ -454,6 +466,8 @@ function onDataLoaded(rows){
 
     if(norm.length===0){alert('Nenhum registro válido encontrado.\nVerifique se o arquivo tem as colunas: ambiente, status, aging.');return;}
     build(norm);
+    const ls=document.getElementById('loading-screen');
+    if(ls)ls.style.display='none';
     document.getElementById('upload-wrap').style.display='none';
     document.getElementById('dash').style.display='block';
     document.getElementById('hdr-sub').textContent='Atualizado em '+new Date().toLocaleString('pt-BR')+' · '+norm.length+' registros';
@@ -816,6 +830,57 @@ async function exportPDF(){
 
 document.getElementById('ft-date').textContent=new Date().toLocaleDateString('pt-BR');
 setupUpload();
+
+// ── Google Sheets integration ─────────────────────────────
+const SHEETS_URL='https://docs.google.com/spreadsheets/d/e/2PACX-1vQ1F59Ms2AGX-gDGLb6V3N_pbAqcRwtAMGCVsxUod9nmhw_yyV7MmpD6b3FpS60sstge8Z-UoScQ_ne/pub?gid=1030428966&single=true&output=csv';
+
+function setLoadingProgress(pct,msg){
+  document.getElementById('loading-bar').style.width=pct+'%';
+  if(msg)document.getElementById('loading-msg').textContent=msg;
+}
+
+async function loadFromSheets(){
+  const btn=document.getElementById('btn-refresh');
+  if(btn){btn.disabled=true;btn.textContent='Atualizando...';}
+  document.getElementById('loading-screen') && (document.getElementById('loading-screen').style.display='flex');
+  document.getElementById('dash').style.display='none';
+  try{
+    setLoadingProgress(30,'Buscando dados do Google Sheets...');
+    // Add cache-busting param
+    const url=SHEETS_URL+'&_t='+Date.now();
+    const resp=await fetch(url);
+    if(!resp.ok)throw new Error('Erro ao buscar planilha: '+resp.status);
+    setLoadingProgress(60,'Processando dados...');
+    const text=await resp.text();
+    // Detect delimiter (comma or semicolon)
+    const delim=text.indexOf(';')>-1&&text.indexOf(';')<text.indexOf(',')?';':',';
+    Papa.parse(text,{
+      header:true,
+      delimiter:delim,
+      skipEmptyLines:true,
+      complete(res){
+        setLoadingProgress(90,'Montando dashboard...');
+        setTimeout(()=>{
+          onDataLoaded(res.data);
+          const ls=document.getElementById('loading-screen');
+          if(ls)ls.style.display='none';
+          if(btn){btn.disabled=false;btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg> Atualizar dados';}
+          setLoadingProgress(100,'');
+        },100);
+      },
+      error(e){throw new Error('Erro ao processar CSV: '+e.message);}
+    });
+  }catch(err){
+    console.error(err);
+    document.getElementById('loading-msg').textContent='Erro: '+err.message;
+    setLoadingProgress(0,'');
+    if(btn){btn.disabled=false;btn.textContent='Tentar novamente';}
+    alert('Não foi possível carregar os dados do Google Sheets.\nVerifique sua conexão e tente novamente.\n\nDetalhes: '+err.message);
+  }
+}
+
+// Auto-load on page open
+loadFromSheets();
 
 // ── Resizable columns ────────────────────────────────────
 function makeResizable(table){
