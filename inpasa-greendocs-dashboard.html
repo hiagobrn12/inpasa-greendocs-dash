@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>INPASA — GreenDocs Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
@@ -22,7 +24,7 @@
   --white:#fff;--text:#1A1A2E;--muted:#5A5E6B;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Montserrat',sans-serif;background:#ECEEF2;color:var(--text);font-size:19px;line-height:1.5}
+body{font-family:'Montserrat','Segoe UI','Helvetica Neue',Arial,sans-serif;background:#ECEEF2;color:var(--text);font-size:19px;line-height:1.5}
 
 .hdr{background:var(--blue);display:flex;align-items:stretch;min-height:72px}
 .hdr-logo{background:var(--blue-dk);padding:0 28px;display:flex;align-items:center;gap:14px;flex-shrink:0}
@@ -230,8 +232,8 @@ body{font-family:'Montserrat',sans-serif;background:#ECEEF2;color:var(--text);fo
       <div class="sec-hdr"><h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>Por Unidade e Disciplina</h2></div>
       <div class="sec-body">
         <div class="two-col">
-          <div class="cbox"><h4>LMs por unidade e status</h4><div class="chart-wrap" style="height:270px"><canvas id="cUnit"></canvas></div><div class="leg" id="leg-unit"></div></div>
-          <div class="cbox"><h4>LMs por disciplina e status</h4><div class="chart-wrap" style="height:270px"><canvas id="cDisc"></canvas></div><div class="leg" id="leg-disc"></div></div>
+          <div class="cbox"><h4>LMs por unidade e status</h4><div class="chart-wrap" style="height:360px"><canvas id="cUnit"></canvas></div><div class="leg" id="leg-unit"></div></div>
+          <div class="cbox"><h4>LMs por disciplina e status</h4><div class="chart-wrap" style="height:360px"><canvas id="cDisc"></canvas></div><div class="leg" id="leg-disc"></div></div>
         </div>
       </div>
     </div>
@@ -242,8 +244,8 @@ body{font-family:'Montserrat',sans-serif;background:#ECEEF2;color:var(--text);fo
       <div class="sec-body">
         <div class="kpi-row" id="dur-kpis" style="grid-template-columns:repeat(4,1fr)"></div>
         <div class="two-col">
-          <div class="cbox"><h4>Dias acumulados por etapa</h4><div class="chart-wrap" style="height:230px"><canvas id="cDur"></canvas></div></div>
-          <div class="cbox"><h4>Total de revisões por etapa</h4><div class="chart-wrap" style="height:230px"><canvas id="cRev"></canvas></div></div>
+          <div class="cbox"><h4>Dias acumulados por etapa</h4><div class="chart-wrap" style="height:300px"><canvas id="cDur"></canvas></div></div>
+          <div class="cbox"><h4>Total de revisões por etapa</h4><div class="chart-wrap" style="height:300px"><canvas id="cRev"></canvas></div></div>
         </div>
         <div class="divider"></div>
         <h4 style="font-size:22px;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:.5px;margin-bottom:16px">Duração em etapa por unidade</h4>
@@ -636,7 +638,7 @@ function renderDurKPIs(){
   const allDur=G.rows.map(r=>parseInt(r.aging)||0);
   const maxDur=Math.max(...allDur);
   document.getElementById('dur-kpis').innerHTML=[
-    {c:'crit',v:maxDur,l:'Duração em etapa em etapa',s:'dias no máximo'},
+    {c:'crit',v:maxDur,l:'Maior duração',s:'dias no máximo'},
     {c:'rev',v:meds[0],l:'Média em revisão',s:'dias por lista'},
     {c:'val',v:meds[1],l:'Média em validação',s:'dias por lista'},
     {c:'apr',v:meds[2],l:'Média em aprovação',s:'dias por lista'},
@@ -756,28 +758,44 @@ async function exportPDF(){
   const btn=document.querySelector('.hdr-btns .btn-or');
   btn.textContent='Gerando…';btn.disabled=true;
 
-  // 96dpi screen: 1px = 25.4/96 mm
   const PX2MM=25.4/96;
+  // Use a fixed capture width so content is never cut off regardless of window size
+  const CAPTURE_WIDTH=1600;
   let pdf=null;
 
   for(let i=0;i<sel.length;i++){
     const el=document.getElementById(sel[i]);
     if(!el)continue;
 
-    // Capture at 2x — sharp but not oversized
+    // Temporarily force element to fixed width for capture
+    const origWidth=el.style.width;
+    el.style.width=CAPTURE_WIDTH+'px';
+    el.style.minWidth=CAPTURE_WIDTH+'px';
+
+    // Wait for reflow
+    await new Promise(r=>setTimeout(r,80));
+
+    const captureH=el.scrollHeight;
+
     const cv=await html2canvas(el,{
       scale:2,
       useCORS:true,
       backgroundColor:'#ffffff',
       logging:false,
-      scrollX:0,scrollY:0,
-      width:el.offsetWidth,
-      height:el.offsetHeight
+      scrollX:0,
+      scrollY:0,
+      width:CAPTURE_WIDTH,
+      height:captureH,
+      windowWidth:CAPTURE_WIDTH,
     });
 
-    // Page dimensions = exact element size, zero margin
-    const pageW=el.offsetWidth*PX2MM;
-    const pageH=el.offsetHeight*PX2MM;
+    // Restore original width
+    el.style.width=origWidth;
+    el.style.minWidth='';
+
+    // Page size matches captured content exactly
+    const pageW=CAPTURE_WIDTH*PX2MM;
+    const pageH=captureH*PX2MM;
     const orientation=pageW>=pageH?'landscape':'portrait';
 
     if(!pdf){
@@ -786,8 +804,7 @@ async function exportPDF(){
       pdf.addPage([pageW,pageH],orientation);
     }
 
-    // Fill page exactly — no margin, no whitespace
-    pdf.addImage(cv.toDataURL('image/jpeg',0.92),'JPEG',0,0,pageW,pageH);
+    pdf.addImage(cv.toDataURL('image/png'),'PNG',0,0,pageW,pageH);
   }
 
   if(pdf){
